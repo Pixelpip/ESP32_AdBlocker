@@ -45,15 +45,27 @@ void handleDNSpacket(AsyncUDPPacket packet) {
   char domain[MAX_HOSTNAME];
   int new_offset = parseDNSname(rx, offset, domain);
   if (new_offset < 0) return;
+  
+  uint16_t qtype = (rx[new_offset] << 8) | rx[new_offset + 1];
   offset = new_offset;
   offset += 4; // skip QTYPE + QCLASS
 
   // Build response
   uint8_t tx[512];
-  memcpy(tx, rx, len);
+  memcpy(tx, rx, offset); // Only copy header and question
   dns_header_t *res = (dns_header_t *)tx;
 
   res->flags = htons(0x8180); // response + no error
+  res->qdcount = htons(1);
+  res->nscount = 0;
+  res->arcount = 0;
+
+  if (qtype != 1) { // Not an A record (e.g. AAAA, HTTPS)
+    res->ancount = 0;
+    packet.write(tx, offset);
+    return;
+  }
+
   res->ancount = htons(1);
   int resp_offset = offset;
 
